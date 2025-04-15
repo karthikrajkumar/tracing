@@ -10,6 +10,8 @@ import time
 import random
 import concurrent.futures
 import argparse
+import json
+import uuid
 
 # Default settings
 DEFAULT_HOST = "http://localhost:8000"
@@ -17,32 +19,165 @@ DEFAULT_RUNS = 10
 DEFAULT_CONCURRENCY = 3
 DEFAULT_DELAY = 0.5
 
-def make_request(endpoint, host=DEFAULT_HOST):
+def make_request(endpoint, host=DEFAULT_HOST, method="GET", data=None):
     """Make a request to the specified endpoint and return the response."""
     url = f"{host}{endpoint}"
     try:
         start_time = time.time()
-        response = requests.get(url, timeout=10)
+        
+        if method.upper() == "GET":
+            response = requests.get(url, timeout=10)
+        elif method.upper() == "POST":
+            response = requests.post(url, json=data, timeout=10)
+        elif method.upper() == "PUT":
+            response = requests.put(url, json=data, timeout=10)
+        elif method.upper() == "DELETE":
+            response = requests.delete(url, timeout=10)
+        else:
+            raise ValueError(f"Unsupported method: {method}")
+            
         duration = time.time() - start_time
         
-        print(f"Request to {endpoint} completed in {duration:.3f}s with status {response.status_code}")
-        return response.json()
+        print(f"{method} request to {endpoint} completed in {duration:.3f}s with status {response.status_code}")
+        
+        if response.status_code >= 200 and response.status_code < 300:
+            if response.status_code != 204:  # No content
+                return response.json()
+            return {"status": "success"}
+        else:
+            print(f"Error response: {response.text}")
+            return None
     except Exception as e:
-        print(f"Error making request to {endpoint}: {str(e)}")
+        print(f"Error making {method} request to {endpoint}: {str(e)}")
         return None
+
+def create_user(host=DEFAULT_HOST):
+    """Create a test user and return the user data."""
+    username = f"testuser_{uuid.uuid4().hex[:8]}"
+    email = f"{username}@example.com"
+    password = "testpassword123"
+    
+    user_data = {
+        "username": username,
+        "email": email,
+        "password": password
+    }
+    
+    response = make_request("/users", host, method="POST", data=user_data)
+    return response
+
+def create_todo(user_id, host=DEFAULT_HOST):
+    """Create a test todo for the specified user and return the todo data."""
+    todo_data = {
+        "title": f"Test Todo {random.randint(1000, 9999)}",
+        "description": f"This is a test todo created at {time.time()}",
+        "priority": random.randint(1, 5)
+    }
+    
+    response = make_request(f"/users/{user_id}/todos", host, method="POST", data=todo_data)
+    return response
+
+def test_user_flow(host=DEFAULT_HOST):
+    """Test the user-related endpoints."""
+    print("\nTesting user flow...")
+    
+    # Create a user
+    user = create_user(host)
+    if not user:
+        print("Failed to create user")
+        return
+    
+    user_id = user["id"]
+    print(f"Created user with ID {user_id}")
+    
+    # Get the user
+    get_user = make_request(f"/users/{user_id}", host)
+    if not get_user:
+        print(f"Failed to get user with ID {user_id}")
+    
+    # Update the user
+    update_data = {"username": f"updated_{user['username']}"}
+    updated_user = make_request(f"/users/{user_id}", host, method="PUT", data=update_data)
+    if not updated_user:
+        print(f"Failed to update user with ID {user_id}")
+    
+    # Get all users
+    users = make_request("/users", host)
+    if not users:
+        print("Failed to get users")
+    
+    # Create todos for the user
+    todos = []
+    for _ in range(3):
+        todo = create_todo(user_id, host)
+        if todo:
+            todos.append(todo)
+    
+    print(f"Created {len(todos)} todos for user {user_id}")
+    
+    # Get user's todos
+    user_todos = make_request(f"/users/{user_id}/todos", host)
+    if not user_todos:
+        print(f"Failed to get todos for user {user_id}")
+    
+    # Mark a todo as completed
+    if todos:
+        todo_id = todos[0]["id"]
+        completed_todo = make_request(f"/todos/{todo_id}/complete", host, method="PUT")
+        if not completed_todo:
+            print(f"Failed to mark todo {todo_id} as completed")
+    
+    # Get all todos
+    all_todos = make_request("/todos", host)
+    if not all_todos:
+        print("Failed to get all todos")
+    
+    # Delete a todo
+    if len(todos) > 1:
+        todo_id = todos[1]["id"]
+        delete_result = make_request(f"/todos/{todo_id}", host, method="DELETE")
+        if not delete_result:
+            print(f"Failed to delete todo {todo_id}")
+    
+    # Delete the user (optional - comment out if you want to keep the test data)
+    # delete_result = make_request(f"/users/{user_id}", host, method="DELETE")
+    # if not delete_result:
+    #     print(f"Failed to delete user {user_id}")
+    
+    return user_id
+
+def test_weather_api(host=DEFAULT_HOST):
+    """Test the weather API endpoint."""
+    print("\nTesting weather API...")
+    
+    cities = ["London", "New York", "Tokyo", "Paris", "Sydney"]
+    city = random.choice(cities)
+    
+    weather = make_request(f"/weather/{city}", host)
+    if weather:
+        print(f"Weather for {city}: {weather['temperature']}°C, {weather['conditions']}")
+    else:
+        print(f"Failed to get weather for {city}")
 
 def run_test(host=DEFAULT_HOST, runs=DEFAULT_RUNS, concurrency=DEFAULT_CONCURRENCY, delay=DEFAULT_DELAY):
     """Run the test with the specified parameters."""
     print(f"\n{'='*80}\nStarting test with {runs} runs, {concurrency} concurrent requests, and {delay}s delay\n{'='*80}\n")
     
+    # First, test the user flow to create some data
+    user_id = test_user_flow(host)
+    
+    # Test the weather API
+    test_weather_api(host)
+    
     # List of all endpoints
     endpoints = [
         "/hello",
         "/db-operation",
-        "/external-api",
-        "/error-simulation",
         "/complex-operation",
-        "/health"
+        "/health",
+        f"/users/{user_id}" if user_id else "/users",
+        "/todos",
+        f"/weather/{random.choice(['London', 'New York', 'Tokyo', 'Paris', 'Sydney'])}"
     ]
     
     # Run the specified number of test iterations
