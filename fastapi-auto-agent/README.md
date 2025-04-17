@@ -1,6 +1,6 @@
-# FastAPI Auto-Instrumentation Agent
+# FastAPI Auto-Instrumentation Agent (Dynatrace-like Approach)
 
-A Python agent that automatically adds OpenTelemetry instrumentation to FastAPI applications without requiring any code changes.
+A Python agent that automatically adds OpenTelemetry instrumentation to FastAPI applications without requiring any code changes, similar to how Dynatrace's OneAgent works.
 
 ## Features
 
@@ -53,7 +53,7 @@ docker run -d --name jaeger \
   jaegertracing/all-in-one:latest
 
 # Run your FastAPI application with the agent
-fastapi-auto-agent --service-name your-service-name python -m uvicorn your_app:app --reload
+fastapi-auto-agent --service-name your-service-name python3 -m uvicorn your_app:app --reload
 ```
 
 ### Command-Line Options
@@ -112,9 +112,37 @@ You can customize the attributes added to spans by modifying the instrumentor fi
 
 ### No Traces in Jaeger
 
-- Make sure Jaeger is running and accessible
-- Check that the Jaeger endpoint is correct
-- Enable debug logging with the `--debug` flag to see more information
+If you don't see any traces in Jaeger, try the following:
+
+1. **Check if Jaeger is running**: Open http://localhost:16686 in your browser to see if Jaeger UI is accessible.
+
+2. **Verify the Jaeger endpoint**: Make sure the Jaeger endpoint is correct. The default is http://localhost:4317.
+
+3. **Run with debug logging**: Add the `--debug` flag to see more detailed logs:
+   ```bash
+   fastapi-auto-agent --debug --service-name your-service-name python3 -m uvicorn your_app:app --reload
+   ```
+
+4. **Check module loading**: Look for log messages about intercepting and instrumenting modules. If you don't see these messages, the instrumentation might not be applied.
+
+5. **Try a different port**: If port 4317 is already in use, try a different port:
+   ```bash
+   docker run -d --name jaeger \
+     -e COLLECTOR_OTLP_ENABLED=true \
+     -p 16686:16686 \
+     -p 14317:4317 \
+     -p 14318:4318 \
+     jaegertracing/all-in-one:latest
+   
+   fastapi-auto-agent --jaeger-endpoint http://localhost:14317 --service-name your-service-name python3 -m uvicorn your_app:app --reload
+   ```
+
+6. **Check Docker logs**: If using Docker for Jaeger, check the logs for any errors:
+   ```bash
+   docker logs jaeger
+   ```
+
+7. **Check if the application is importing the right modules**: The agent only instruments specific modules. Make sure your application is importing FastAPI, SQLAlchemy, and/or requests.
 
 ### Application Errors
 

@@ -1,8 +1,8 @@
-# Auto-Instrumentation for FastAPI Applications
+# Auto-Instrumentation for FastAPI Applications (Dynatrace-like Approach)
 
-This project demonstrates how to automatically add OpenTelemetry instrumentation to FastAPI applications without requiring any code changes. It consists of two main components:
+This project demonstrates how to automatically add OpenTelemetry instrumentation to FastAPI applications without requiring any code changes, similar to how Dynatrace works. It consists of two main components:
 
-1. **FastAPI Auto-Instrumentation Agent**: A Python agent that uses import hooks to inject OpenTelemetry instrumentation into FastAPI applications at runtime.
+1. **FastAPI Auto-Instrumentation Agent**: A Python agent that automatically instruments FastAPI applications at runtime using monkey patching and preloading techniques, similar to how Dynatrace's OneAgent works.
 2. **Sample FastAPI Application**: A clean FastAPI application with no explicit OpenTelemetry instrumentation, used to demonstrate the agent's capabilities.
 
 ## Project Structure
@@ -84,7 +84,7 @@ docker run -d --name jaeger \
 
 ```bash
 cd sample-fastapi-app
-fastapi-auto-agent --service-name sample-fastapi-app python -m uvicorn app.main:app --reload
+fastapi-auto-agent --service-name sample-fastapi-app python3 -m uvicorn app.main:app --reload
 ```
 
 ## How It Works
@@ -136,6 +136,63 @@ After running the application with auto-instrumentation, you can view the traces
 2. Select "sample-fastapi-app" from the Service dropdown
 3. Click "Find Traces" to see the traces
 4. Click on a trace to see the detailed span information
+
+## Troubleshooting
+
+### No Traces in Jaeger
+
+If you don't see any traces in Jaeger, try the following:
+
+1. **Check if Jaeger is running**: Open http://localhost:16686 in your browser to see if Jaeger UI is accessible.
+
+2. **Verify the Jaeger endpoint**: Make sure the Jaeger endpoint is correct. The default is http://localhost:4317.
+
+3. **Run with debug logging**: Add the `--debug` flag to see more detailed logs:
+   ```bash
+   fastapi-auto-agent --debug --service-name sample-fastapi-app python3 -m uvicorn app.main:app --reload
+   ```
+
+4. **Check module loading**: Look for log messages about intercepting and instrumenting modules. If you don't see these messages, the instrumentation might not be applied.
+
+5. **Try a different port**: If port 4317 is already in use, try a different port:
+   ```bash
+   docker run -d --name jaeger \
+     -e COLLECTOR_OTLP_ENABLED=true \
+     -p 16686:16686 \
+     -p 14317:4317 \
+     -p 14318:4318 \
+     jaegertracing/all-in-one:latest
+   
+   fastapi-auto-agent --jaeger-endpoint http://localhost:14317 --service-name sample-fastapi-app python3 -m uvicorn app.main:app --reload
+   ```
+
+6. **Check Docker logs**: If using Docker for Jaeger, check the logs for any errors:
+   ```bash
+   docker logs jaeger
+   ```
+
+7. **Check console output**: The agent now includes a console exporter that will print traces to the console when running with the `--debug` flag. Look for trace output in the console to verify that traces are being generated.
+
+8. **Check the OTLP exporter**: The agent uses the OTLP gRPC exporter to send traces to Jaeger. Make sure the appropriate port is open in your Jaeger container:
+   ```bash
+   docker run -d --name jaeger \
+     -e COLLECTOR_OTLP_ENABLED=true \
+     -p 16686:16686 \
+     -p 4317:4317 \
+     jaegertracing/all-in-one:latest
+   ```
+
+9. **Try a different collector**: If you're still having issues with Jaeger, you can try using Zipkin instead:
+   ```bash
+   docker run -d -p 9411:9411 openzipkin/zipkin
+   
+   # Then install the Zipkin exporter
+   pip install opentelemetry-exporter-zipkin
+   ```
+   
+   Then modify the `telemetry.py` file to use the Zipkin exporter instead of the OTLP exporter.
+
+10. **Check if traces are being generated**: The console output should show spans being created. If you see spans in the console but not in Jaeger, the issue is likely with the connection to Jaeger, not with the instrumentation itself.
 
 ## Next Steps
 

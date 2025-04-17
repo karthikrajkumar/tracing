@@ -16,7 +16,7 @@ class InstrumentationLoader(SourceFileLoader):
         
         # Apply instrumentation after module is loaded
         module_name = module.__name__
-        logger.debug(f"Loaded module: {module_name}")
+        logger.info(f"Loaded module: {module_name}")
         
         try:
             if module_name == "fastapi.applications":
@@ -58,7 +58,7 @@ class InstrumentationFinder(MetaPathFinder):
         ]
         
         if fullname in modules_to_instrument:
-            logger.debug(f"Intercepting module: {fullname}")
+            logger.info(f"Intercepting module: {fullname}")
             spec.loader = InstrumentationLoader(spec.loader.name, spec.loader.path)
             
         return spec
@@ -67,3 +67,24 @@ def install_import_hook():
     """Install the import hook into sys.meta_path."""
     logger.info("Installing import hooks")
     sys.meta_path.insert(0, InstrumentationFinder())
+    
+    # Also try to instrument already imported modules
+    logger.info("Checking for already imported modules to instrument")
+    modules_to_instrument = {
+        "fastapi.applications": "fastapi_auto_agent.instrumentors.fastapi",
+        "starlette.applications": "fastapi_auto_agent.instrumentors.starlette",
+        "sqlalchemy.engine.base": "fastapi_auto_agent.instrumentors.sqlalchemy",
+        "requests.sessions": "fastapi_auto_agent.instrumentors.requests"
+    }
+    
+    for module_name, instrumentor_path in modules_to_instrument.items():
+        if module_name in sys.modules:
+            logger.info(f"Found already imported module: {module_name}")
+            try:
+                module = sys.modules[module_name]
+                instrumentor = __import__(instrumentor_path, fromlist=['instrument_' + module_name.split('.')[-1]])
+                instrument_func = getattr(instrumentor, 'instrument_' + module_name.split('.')[-1])
+                instrument_func(module)
+                logger.info(f"Instrumented already imported module: {module_name}")
+            except Exception as e:
+                logger.error(f"Error instrumenting already imported module {module_name}: {e}")

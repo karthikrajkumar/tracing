@@ -7,9 +7,10 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.semconv.resource import ResourceAttributes
 import logging
-import socket
 import os
 import sys
+import socket
+import urllib.parse
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +36,57 @@ def setup_telemetry(service_name="fastapi-application", jaeger_endpoint="http://
     tracer_provider = TracerProvider(resource=resource)
     
     # Create an OTLP exporter pointing to Jaeger
-    otlp_exporter = OTLPSpanExporter(endpoint=jaeger_endpoint, insecure=True)
+    logger.info(f"Creating OTLP exporter with endpoint: {jaeger_endpoint}")
     
-    # Add the exporter to the tracer provider
+    # Check if Jaeger is accessible
+    
+    parsed_url = urllib.parse.urlparse(jaeger_endpoint)
+    host = parsed_url.hostname
+    port = parsed_url.port or 4317
+    
+    logger.info(f"Checking if Jaeger is accessible at {host}:{port}")
+    
+    try:
+        # Try to connect to Jaeger
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(2)
+        s.connect((host, port))
+        s.close()
+        logger.info(f"Successfully connected to Jaeger at {host}:{port}")
+        
+        # Create the OTLP exporter
+        # Try OTLP gRPC exporter
+        try:
+            otlp_exporter = OTLPSpanExporter(endpoint=jaeger_endpoint, insecure=True)
+            logger.info("OTLP gRPC exporter created successfully")
+        except Exception as e:
+            logger.error(f"Error creating OTLP gRPC exporter: {e}")
+            # Fallback to console exporter
+            from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+            logger.info("Falling back to console exporter")
+            otlp_exporter = ConsoleSpanExporter()
+        
+        # Also add a console exporter for debugging
+        from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+        console_exporter = ConsoleSpanExporter()
+        
+    except Exception as e:
+        logger.error(f"Error connecting to Jaeger at {host}:{port}: {e}")
+        logger.error("Make sure Jaeger is running and accessible")
+        
+        # Fallback to console exporter for debugging
+        from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+        logger.info("Falling back to console exporter")
+        otlp_exporter = ConsoleSpanExporter()
+        console_exporter = None
+    
+    # Add the exporters to the tracer provider
     tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+    
+    # Add console exporter if available
+    if 'console_exporter' in locals() and console_exporter is not None:
+        logger.info("Adding console exporter for debugging")
+        tracer_provider.add_span_processor(BatchSpanProcessor(console_exporter))
     
     # Set the tracer provider
     trace.set_tracer_provider(tracer_provider)

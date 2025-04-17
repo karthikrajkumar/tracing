@@ -42,6 +42,14 @@ cd ..
 # Start Jaeger if Docker is available
 if [ "$DOCKER_AVAILABLE" = true ]; then
     echo -e "${YELLOW}Starting Jaeger...${NC}"
+    
+    # Check if Jaeger container is already running
+    if docker ps | grep -q jaeger; then
+        echo -e "${YELLOW}Jaeger is already running. Stopping and removing...${NC}"
+        docker stop jaeger
+        docker rm jaeger
+    fi
+    
     docker run -d --name jaeger \
         -e COLLECTOR_OTLP_ENABLED=true \
         -p 16686:16686 \
@@ -52,6 +60,14 @@ if [ "$DOCKER_AVAILABLE" = true ]; then
     # Wait for Jaeger to start
     echo -e "${YELLOW}Waiting for Jaeger to start...${NC}"
     sleep 5
+    
+    # Check if Jaeger is running
+    if ! curl -s http://localhost:16686 > /dev/null; then
+        echo -e "${RED}Jaeger doesn't seem to be running. Please check Docker logs.${NC}"
+        docker logs jaeger
+    else
+        echo -e "${GREEN}Jaeger is running and accessible at http://localhost:16686${NC}"
+    fi
 else
     echo -e "${YELLOW}Please make sure Jaeger is running and accessible at http://localhost:16686${NC}"
     echo -e "${YELLOW}You can start Jaeger with Docker using:${NC}"
@@ -67,7 +83,8 @@ echo -e "${GREEN}The Jaeger UI will be available at http://localhost:16686${NC}"
 echo -e "${GREEN}Press Ctrl+C to stop the app${NC}"
 
 cd sample-fastapi-app
-fastapi-auto-agent --service-name sample-fastapi-app python -m uvicorn app.main:app --reload
+echo -e "${YELLOW}Using Dynatrace-like auto-instrumentation approach...${NC}"
+fastapi-auto-agent --debug --service-name sample-fastapi-app python3 -m uvicorn app.main:app
 
 # Cleanup
 if [ "$DOCKER_AVAILABLE" = true ]; then
