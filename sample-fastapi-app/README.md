@@ -72,9 +72,9 @@ uvicorn main:app --reload
 
 The API will be available at http://localhost:8000.
 
-### With Auto-Instrumentation
+### With Auto-Instrumentation (Dynatrace-like Approach)
 
-To run the application with the FastAPI Auto-Instrumentation Agent:
+This application can be run with the FastAPI Auto-Instrumentation Agent, which works similarly to Dynatrace's OneAgent by automatically instrumenting the application without requiring any code changes:
 
 ```bash
 # Make sure Jaeger is running
@@ -87,9 +87,20 @@ docker run -d --name jaeger \
   jaegertracing/all-in-one:latest
 
 # Run the application with auto-instrumentation
-cd app
-fastapi-auto-agent --service-name sample-fastapi-app python -m uvicorn main:app --reload
+fastapi-auto-agent --service-name sample-fastapi-app python3 -m uvicorn app.main:app
+
+# For more detailed logging, add the --debug flag:
+# fastapi-auto-agent --debug --service-name sample-fastapi-app python3 -m uvicorn app.main:app
 ```
+
+The agent works by:
+
+1. Preloading instrumentation code before your application starts
+2. Monkey patching key libraries (FastAPI, SQLAlchemy, requests) to add tracing
+3. Automatically instrumenting your FastAPI application when it's created
+4. Sending traces to Jaeger without any code changes to your application
+
+This is similar to how Dynatrace's OneAgent works, where you install the agent on your server and it automatically instruments your applications without requiring any code changes.
 
 The API will be available at http://localhost:8000, and traces will be sent to Jaeger.
 
